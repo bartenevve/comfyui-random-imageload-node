@@ -128,12 +128,3 @@ class LoadRandomImage:
         if not os.path.isdir(real_dir):
             return f"Not a valid directory: {directory}"
         return True
-
-
-NODE_CLASS_MAPPINGS = {
-    "LoadRandomImage": LoadRandomImage,
-}
-
-NODE_DISPLAY_NAME_MAPPINGS = {
-    "LoadRandomImage": "Load Random Image \U0001f3b2",
-}
