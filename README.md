@@ -1,69 +1,69 @@
 # comfyui-random-image
 
-`LoadRandomImage` — LoadImage-подобная нода: выбирает файл из **произвольной** директории на диске (не только из managed `ComfyUI/input`), вручную / случайно / последовательно по алфавиту.
+`LoadRandomImage` — a LoadImage-alike node: picks a file from an **arbitrary** directory on disk (not just the managed `ComfyUI/input`), manually / randomly / sequentially in alphabetical order.
 
-## Установка (вручную / из архива)
+## Install (manual / from archive)
 
-1. Скопировать/распаковать папку `comfyui-random-image` в `<ComfyUI>/custom_nodes/`
-2. Перезапустить ComfyUI
-3. Нода появится как **Load Random Image 🎲** (категория `image`)
+1. Copy/extract the `comfyui-random-image` folder into `<ComfyUI>/custom_nodes/`
+2. Restart ComfyUI
+3. The node shows up as **Load Random Image 🎲** (category `image`)
 
-Зависимости — `torch`, `Pillow`, `aiohttp`, `numpy` — уже идут с ComfyUI, ставить отдельно не нужно.
+Dependencies — `torch`, `Pillow`, `aiohttp`, `numpy` — already ship with ComfyUI, no separate install needed.
 
-## Установка через git
+## Install via git
 
 ```bash
 cd <ComfyUI>/custom_nodes
-git clone <URL_твоего_репозитория> comfyui-random-image
+git clone <your_repo_URL> comfyui-random-image
 ```
 
-Обновление:
+Update:
 
 ```bash
 cd <ComfyUI>/custom_nodes/comfyui-random-image
 git pull
 ```
 
-Перезапустить ComfyUI после установки/обновления.
+Restart ComfyUI after installing/updating.
 
-## Использование
+## Usage
 
-- **`directory`** — абсолютный путь к папке с картинками (рекурсивно, `.png/.jpg/.jpeg/.webp/.bmp/.gif`)
-- **Дропдаун имени файла** — ручной выбор конкретного файла из списка
-- **🎲 Randomize** — кнопка, сразу подбирает случайный файл и обновляет превью (без запуска графа)
-- **Drag & drop** картинки прямо на ноду — грузит файл через штатный `/upload/image` ComfyUI, переключает `directory` на managed input dir, выбирает загруженный файл (аналог поведения core LoadImage)
-- **`randomize_on_queue`** — рандомный выбор при **каждом** Queue Prompt (серверная сторона, а не только по кнопке)
-- **`sequential_on_queue`** — следующий по алфавиту файл при каждом Queue Prompt, с переходом на начало списка после последнего файла
+- **`directory`** — absolute path to a folder of images (recursive, `.png/.jpg/.jpeg/.webp/.bmp/.gif`)
+- **Filename dropdown** — manually pick a specific file from the list
+- **🎲 Randomize** — button that instantly picks a random file and updates the preview (no graph execution needed)
+- **Drag & drop** an image straight onto the node — uploads it through ComfyUI's own `/upload/image`, switches `directory` to the managed input dir, and selects the uploaded file (mirrors core LoadImage's behavior)
+- **`randomize_on_queue`** — random pick on **every** Queue Prompt (server-side, not just via the button)
+- **`sequential_on_queue`** — next file in alphabetical order on every Queue Prompt, wrapping back to the start after the last file
 
-Оба чекбокса — взаимоисключающие (в UI), сервер тоже отклонит queue, если оба включены одновременно (защита на случай ручного редактирования workflow.json).
+The two checkboxes are mutually exclusive in the UI, and the server also rejects the queue if both end up enabled at once (guards against a hand-edited workflow.json).
 
-**Sequential-семантика:** в конкретном запуске отдаётся **текущий** выбранный файл (тот, что уже был показан в превью), а продвижение к следующему происходит **после** — готовит стартовую точку для следующего запуска. Продвижение отслеживается по `unique_id` ноды в памяти сервера, что также защищает от гонки при батч-очереди (несколько прогонов, поставленных в очередь до того, как первый успел завершиться, не грузят один и тот же файл повторно).
+**Sequential semantics:** a given run outputs the file **currently** selected (the one already shown in the preview), and the advance to the next one happens **after** — preparing the starting point for the next run. The advance is tracked in server memory per node `unique_id` + `directory`, which also protects against a batch-queue race (several runs queued before the first one finishes don't end up loading the same file repeatedly).
 
-Превью в ноде показывает то, что **реально ушло** в прошлом запуске (переживает сохранение/переоткрытие workflow), не то, что запланировано на следующий.
+The node's preview shows what **actually** got loaded on the last run (survives saving/reopening the workflow), not what's queued up next.
 
-## ⚠️ Безопасность
+## ⚠️ Security
 
-Роуты `/random_image/list`, `/random_image/pick` и `/random_image/view` принимают параметр `dir` **без каких-либо ограничений** — любой, кто может обратиться к HTTP-порту ComfyUI (не обязательно через сам граф/UI — просто голый GET-запрос), может перечислить и прочитать содержимое произвольных файлов на диске, доступных процессу ComfyUI. Это сознательный трейд-офф ради основной фичи ноды (загрузка из любой папки), а не баг устранённый allowlist'ом.
+The `/random_image/list`, `/random_image/pick` and `/random_image/view` routes accept a `dir` parameter with **no restriction whatsoever** — anyone who can reach ComfyUI's HTTP port (not necessarily through the graph/UI at all — a bare GET request is enough) can list and read the contents of arbitrary files on disk that the ComfyUI process has access to. This is a deliberate tradeoff for the node's core feature (loading from any folder), not a bug that an allowlist should close.
 
-**Если ComfyUI открыт в LAN или в интернет** (не только `127.0.0.1`) — держите это в уме и закрывайте доступ на уровне сети (VPN, reverse-proxy с авторизацией, firewall), а не полагайтесь на то, что сам ComfyUI/эта нода что-то ограничивают. Это касается не только этой ноды — у самого ComfyUI по умолчанию тоже нет аутентификации ни на одном эндпоинте.
+**If ComfyUI is exposed on a LAN or the internet** (not just `127.0.0.1`), keep this in mind and restrict access at the network level (VPN, an authenticating reverse proxy, firewall) rather than assuming ComfyUI or this node restrict anything on their own. This isn't unique to this node either — ComfyUI itself ships with no authentication on any of its endpoints by default.
 
-## Тесты
+## Tests
 
-`selection.py` (чистая логика выбора файла, без torch/numpy/PIL) покрыта юнит-тестами:
+`selection.py` (the pure file-selection logic, no torch/numpy/PIL) is covered by unit tests:
 
 ```bash
 python3 -m unittest discover -s tests -v
 ```
 
-## Файлы
+## Files
 
-- `selection.py` — чистая логика: `list_images()`, `resolve_filenames()` (легковесная, без ComfyUI-зависимостей, тестируется отдельно)
-- `nodes.py` — backend-нода (`LoadRandomImage`), тензоры/маски/EXIF
+- `selection.py` — pure logic: `list_images()`, `resolve_filenames()` (lightweight, no ComfyUI dependencies, tested independently)
+- `nodes.py` — the backend node (`LoadRandomImage`): tensors/masks/EXIF handling
 - `routes.py` — aiohttp API: `/random_image/pick`, `/random_image/list`, `/random_image/view`, `/random_image/input_dir`
-- `js/random_image.js` — frontend: dropdown файлов, кнопка рандома, drag&drop, живое превью, персистентность `last_loaded`
-- `__init__.py` — регистрация ноды (`NODE_CLASS_MAPPINGS`) и `WEB_DIRECTORY`
-- `tests/` — юнит-тесты для `selection.py`
+- `js/random_image.js` — frontend: file dropdown, randomize button, drag & drop, live preview, `last_loaded` persistence
+- `__init__.py` — node registration (`NODE_CLASS_MAPPINGS`) and `WEB_DIRECTORY`
+- `tests/` — unit tests for `selection.py`
 
-## Известное ограничение
+## Known limitation
 
-Sequential-продвижение хранится в памяти процесса ComfyUI (сбрасывается при рестарте, тогда просто продолжает с последнего сохранённого в workflow значения) и не синхронизировано между несколькими параллельными воркерами/процессами ComfyUI, если у вас именно такая (нетипичная) конфигурация.
+Sequential-mode advancement is kept in the ComfyUI process's memory (resets on restart, then simply continues from the last value persisted in the workflow) and isn't synchronized across multiple parallel ComfyUI workers/processes, if you happen to run that (uncommon) setup.
