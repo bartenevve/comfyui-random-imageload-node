@@ -1,6 +1,15 @@
 import { app } from "../../scripts/app.js";
 
 const NODE_NAME = "LoadRandomImage";
+const IMAGE_EXTENSIONS = /\.(png|jpe?g|webp|bmp|gif)$/i;
+
+// dropped File.type comes from the OS's MIME registration for the extension,
+// which is sometimes empty/wrong (older Windows + .webp is a known case) -
+// fall back to the extension itself so a genuinely supported image isn't
+// silently rejected
+function isImageFile(file) {
+    return file.type.startsWith("image/") || IMAGE_EXTENSIONS.test(file.name);
+}
 
 app.registerExtension({
     name: "comfyui.random_image",
@@ -17,6 +26,17 @@ app.registerExtension({
             const lastLoadedWidget = node.widgets.find((w) => w.name === "last_loaded");
             const randomWidget = node.widgets.find((w) => w.name === "randomize_on_queue");
             const sequentialWidget = node.widgets.find((w) => w.name === "sequential_on_queue");
+
+            // any of these can be missing if the user did "Convert Widget to
+            // Input" on one of them - in that case the value comes from a
+            // link instead, and our dropdown/preview/dice UI doesn't apply;
+            // bail out instead of throwing partway through setup
+            if (!dirWidget || !filenameWidget || !lastLoadedWidget || !randomWidget || !sequentialWidget) {
+                console.warn(
+                    "LoadRandomImage: one or more widgets were converted to inputs; skipping custom UI."
+                );
+                return result;
+            }
 
             // last_loaded is persisted (serialized with the workflow) but not
             // user-facing - it exists only so the preview can show "what this
@@ -49,7 +69,7 @@ app.registerExtension({
                 e.preventDefault();
                 img.style.outline = "";
                 for (const file of e.dataTransfer.files) {
-                    if (file.type.startsWith("image/")) {
+                    if (isImageFile(file)) {
                         uploadFile(file);
                     }
                 }
@@ -65,7 +85,11 @@ app.registerExtension({
                     "&t=" + Date.now();
             };
 
+            // guards against a slow fetch for a directory the user has since
+            // changed away from resolving late and clobbering a newer pick
+            let fileListRequestId = 0;
             async function refreshFileList() {
+                const requestId = ++fileListRequestId;
                 if (!dirWidget.value) {
                     filenameWidget.options.values = [];
                     return;
@@ -73,6 +97,7 @@ app.registerExtension({
                 try {
                     const resp = await fetch("/random_image/list?dir=" + encodeURIComponent(dirWidget.value));
                     const data = await resp.json();
+                    if (requestId !== fileListRequestId) return;
                     if (data.error) {
                         console.error("random_image list error:", data.error);
                         filenameWidget.options.values = [];
@@ -84,7 +109,9 @@ app.registerExtension({
                     }
                     app.graph.setDirtyCanvas(true, true);
                 } catch (e) {
-                    console.error("random_image list failed:", e);
+                    if (requestId === fileListRequestId) {
+                        console.error("random_image list failed:", e);
+                    }
                 }
             }
 
@@ -152,7 +179,15 @@ app.registerExtension({
                     const dirResp = await fetch(
                         "/random_image/input_dir?subfolder=" + encodeURIComponent(data.subfolder || "")
                     );
+                    if (!dirResp.ok) {
+                        console.error("random_image input_dir lookup failed:", dirResp.status, dirResp.statusText);
+                        return;
+                    }
                     const dirData = await dirResp.json();
+                    if (dirData.error) {
+                        console.error("random_image input_dir error:", dirData.error);
+                        return;
+                    }
 
                     dirWidget.value = dirData.directory;
                     await refreshFileList();
@@ -180,7 +215,7 @@ app.registerExtension({
             node.onDragDrop = function (e) {
                 let handled = false;
                 for (const file of e.dataTransfer.files) {
-                    if (file.type.startsWith("image/")) {
+                    if (isImageFile(file)) {
                         uploadFile(file);
                         handled = true;
                     }
@@ -225,6 +260,20 @@ app.registerExtension({
                 if (lastLoadedWidget) lastLoadedWidget.value = lastLoaded;
                 if (this.updateRandomImagePreview) this.updateRandomImagePreview(lastLoaded);
             }
+        };
+
+        // a loaded/hand-edited workflow.json applies widgets_values directly
+        // during configure, bypassing widget .callback entirely - the JS
+        // mutual-exclusion above never sees it, so correct it here too
+        const onConfigure = nodeType.prototype.onConfigure;
+        nodeType.prototype.onConfigure = function () {
+            const result = onConfigure ? onConfigure.apply(this, arguments) : undefined;
+            const randomW = this.widgets.find((w) => w.name === "randomize_on_queue");
+            const sequentialW = this.widgets.find((w) => w.name === "sequential_on_queue");
+            if (randomW && sequentialW && randomW.value && sequentialW.value) {
+                sequentialW.value = false;
+            }
+            return result;
         };
     },
 });

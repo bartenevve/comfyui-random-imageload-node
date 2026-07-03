@@ -1,3 +1,4 @@
+import asyncio
 import os
 import random
 
@@ -5,7 +6,7 @@ import folder_paths
 from aiohttp import web
 from server import PromptServer
 
-from .nodes import list_images
+from .selection import list_images
 
 
 @PromptServer.instance.routes.get("/random_image/input_dir")
@@ -26,7 +27,10 @@ async def pick_random_image(request):
     if not os.path.isdir(real_dir):
         return web.json_response({"error": f"not a directory: {directory}"}, status=400)
 
-    files = list_images(real_dir)
+    # os.walk over a large/slow directory can take a while - run it off the
+    # event loop so it doesn't stall every other request (including other
+    # users' generation jobs) for the duration
+    files = await asyncio.get_event_loop().run_in_executor(None, list_images, real_dir)
     if not files:
         return web.json_response({"error": "no images found"}, status=404)
 
@@ -44,7 +48,8 @@ async def list_images_route(request):
     if not os.path.isdir(real_dir):
         return web.json_response({"error": f"not a directory: {directory}"}, status=400)
 
-    return web.json_response({"files": list_images(real_dir)})
+    files = await asyncio.get_event_loop().run_in_executor(None, list_images, real_dir)
+    return web.json_response({"files": files})
 
 
 @PromptServer.instance.routes.get("/random_image/view")

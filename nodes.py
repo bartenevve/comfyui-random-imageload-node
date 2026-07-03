@@ -1,24 +1,11 @@
 import hashlib
 import os
-import random
 
 import numpy as np
 import torch
 from PIL import Image, ImageOps, ImageSequence
 
-VALID_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif"}
-
-
-def list_images(directory):
-    """Recursively list image files under directory, sorted case-insensitively."""
-    files = []
-    for root, _dirs, filenames in os.walk(directory):
-        for name in filenames:
-            if os.path.splitext(name)[1].lower() in VALID_EXTENSIONS:
-                rel = os.path.relpath(os.path.join(root, name), directory)
-                files.append(rel)
-    files.sort(key=str.lower)
-    return files
+from .selection import list_images, resolve_filenames
 
 
 class LoadRandomImage:
@@ -34,6 +21,9 @@ class LoadRandomImage:
                 "filename": ("STRING", {"default": ""}),
                 "last_loaded": ("STRING", {"default": ""}),
             },
+            "hidden": {
+                "unique_id": "UNIQUE_ID",
+            },
         }
 
     RETURN_TYPES = ("IMAGE", "MASK", "STRING")
@@ -41,30 +31,15 @@ class LoadRandomImage:
     FUNCTION = "load_image"
     CATEGORY = "image"
 
-    def _resolve_filenames(self, files, randomize_on_queue, sequential_on_queue, filename):
-        """Returns (chosen, next_filename).
-
-        `chosen` is loaded and sent downstream THIS run. `next_filename` is
-        pushed back into the widget after execution, becoming the starting
-        point for the NEXT run - the advance always happens after the
-        current file has already been output, never before.
-        """
-        if randomize_on_queue:
-            chosen = random.choice(files)
-            return chosen, chosen
-
-        if sequential_on_queue:
-            # this run outputs whatever is currently selected, regardless of
-            # whether it got there by manual pick, random pick, or a
-            # previous sequential step
-            chosen = filename if filename in files else files[0]
-            next_filename = files[(files.index(chosen) + 1) % len(files)]
-            return chosen, next_filename
-
-        chosen = filename if (filename and filename in files) else files[0]
-        return chosen, chosen
-
-    def load_image(self, directory, randomize_on_queue, sequential_on_queue, filename="", last_loaded=""):
+    def load_image(
+        self,
+        directory,
+        randomize_on_queue,
+        sequential_on_queue,
+        filename="",
+        last_loaded="",
+        unique_id=None,
+    ):
         directory = os.path.realpath(directory)
         if not os.path.isdir(directory):
             raise NotADirectoryError(f"Not a directory: {directory}")
@@ -73,8 +48,8 @@ class LoadRandomImage:
         if not files:
             raise FileNotFoundError(f"No images found in directory: {directory}")
 
-        chosen, next_filename = self._resolve_filenames(
-            files, randomize_on_queue, sequential_on_queue, filename
+        chosen, next_filename = resolve_filenames(
+            files, randomize_on_queue, sequential_on_queue, filename, unique_id, directory=directory
         )
         image_path = os.path.join(directory, chosen)
 
@@ -115,13 +90,20 @@ class LoadRandomImage:
         }
 
     @classmethod
-    def IS_CHANGED(cls, directory, randomize_on_queue, sequential_on_queue, filename="", last_loaded=""):
+    def IS_CHANGED(
+        cls, directory, randomize_on_queue, sequential_on_queue, filename="", last_loaded="", unique_id=None
+    ):
         if randomize_on_queue or sequential_on_queue:
             return float("nan")
-        return hashlib.sha256(filename.encode("utf-8")).hexdigest()
+        # length-prefixed to avoid "a|b","c" vs "a","b|c" hashing identically
+        return hashlib.sha256(f"{len(directory)}:{directory}|{filename}".encode("utf-8")).hexdigest()
 
     @classmethod
-    def VALIDATE_INPUTS(cls, directory, randomize_on_queue, sequential_on_queue, filename="", last_loaded=""):
+    def VALIDATE_INPUTS(
+        cls, directory, randomize_on_queue, sequential_on_queue, filename="", last_loaded="", unique_id=None
+    ):
+        if randomize_on_queue and sequential_on_queue:
+            return "randomize_on_queue and sequential_on_queue cannot both be enabled"
         if not directory:
             return "Directory path is empty"
         real_dir = os.path.realpath(directory)
