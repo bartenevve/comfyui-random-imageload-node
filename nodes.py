@@ -32,6 +32,7 @@ class LoadRandomImage:
             },
             "optional": {
                 "filename": ("STRING", {"default": ""}),
+                "last_loaded": ("STRING", {"default": ""}),
             },
         }
 
@@ -63,7 +64,7 @@ class LoadRandomImage:
         chosen = filename if (filename and filename in files) else files[0]
         return chosen, chosen
 
-    def load_image(self, directory, randomize_on_queue, sequential_on_queue, filename=""):
+    def load_image(self, directory, randomize_on_queue, sequential_on_queue, filename="", last_loaded=""):
         directory = os.path.realpath(directory)
         if not os.path.isdir(directory):
             raise NotADirectoryError(f"Not a directory: {directory}")
@@ -114,13 +115,13 @@ class LoadRandomImage:
         }
 
     @classmethod
-    def IS_CHANGED(cls, directory, randomize_on_queue, sequential_on_queue, filename=""):
+    def IS_CHANGED(cls, directory, randomize_on_queue, sequential_on_queue, filename="", last_loaded=""):
         if randomize_on_queue or sequential_on_queue:
             return float("nan")
         return hashlib.sha256(filename.encode("utf-8")).hexdigest()
 
     @classmethod
-    def VALIDATE_INPUTS(cls, directory, randomize_on_queue, sequential_on_queue, filename=""):
+    def VALIDATE_INPUTS(cls, directory, randomize_on_queue, sequential_on_queue, filename="", last_loaded=""):
         if not directory:
             return "Directory path is empty"
         real_dir = os.path.realpath(directory)

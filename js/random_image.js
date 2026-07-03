@@ -14,8 +14,15 @@ app.registerExtension({
 
             const dirWidget = node.widgets.find((w) => w.name === "directory");
             const filenameWidget = node.widgets.find((w) => w.name === "filename");
+            const lastLoadedWidget = node.widgets.find((w) => w.name === "last_loaded");
             const randomWidget = node.widgets.find((w) => w.name === "randomize_on_queue");
             const sequentialWidget = node.widgets.find((w) => w.name === "sequential_on_queue");
+
+            // last_loaded is persisted (serialized with the workflow) but not
+            // user-facing - it exists only so the preview can show "what this
+            // node actually output last run" again after reopening a workflow,
+            // separately from `filename` which tracks the NEXT pick
+            lastLoadedWidget.computeSize = () => [0, -4];
 
             // turn the plain STRING widget into a dropdown of files found
             // in `directory`, same idea as core LoadImage's file combo
@@ -26,6 +33,28 @@ app.registerExtension({
             const img = document.createElement("img");
             img.style.width = "100%";
             img.style.objectFit = "contain";
+
+            // the <img> is a real DOM element sitting on top of the graph
+            // canvas - native drag events land on IT, not on the canvas, so
+            // LiteGraph's node.onDragOver/onDragDrop never see them unless
+            // we also listen here directly
+            img.addEventListener("dragover", (e) => {
+                e.preventDefault();
+                img.style.outline = "2px dashed #5af";
+            });
+            img.addEventListener("dragleave", () => {
+                img.style.outline = "";
+            });
+            img.addEventListener("drop", (e) => {
+                e.preventDefault();
+                img.style.outline = "";
+                for (const file of e.dataTransfer.files) {
+                    if (file.type.startsWith("image/")) {
+                        uploadFile(file);
+                    }
+                }
+            });
+
             node.addDOMWidget("random_image_preview", "preview", img, { serialize: false });
 
             node.updateRandomImagePreview = function (filename) {
@@ -163,7 +192,11 @@ app.registerExtension({
             if (dirWidget.value) {
                 refreshFileList();
             }
-            if (filenameWidget.value) {
+            // prefer the persisted "what actually loaded last run" value;
+            // fall back to `filename` only for a node that never ran yet
+            if (lastLoadedWidget.value) {
+                node.updateRandomImagePreview(lastLoadedWidget.value);
+            } else if (filenameWidget.value) {
                 node.updateRandomImagePreview(filenameWidget.value);
             }
 
@@ -184,10 +217,13 @@ app.registerExtension({
                 if (filenameWidget) filenameWidget.value = nextFilename;
             }
 
-            // what this run actually sent downstream - what the preview should show
+            // what this run actually sent downstream - persisted so it
+            // survives a workflow save/reopen, unlike the live <img> itself
             const lastLoaded = message.last_loaded && message.last_loaded[0];
-            if (lastLoaded && this.updateRandomImagePreview) {
-                this.updateRandomImagePreview(lastLoaded);
+            if (lastLoaded) {
+                const lastLoadedWidget = this.widgets.find((w) => w.name === "last_loaded");
+                if (lastLoadedWidget) lastLoadedWidget.value = lastLoaded;
+                if (this.updateRandomImagePreview) this.updateRandomImagePreview(lastLoaded);
             }
         };
     },
