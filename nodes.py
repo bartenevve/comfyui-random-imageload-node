@@ -26,8 +26,8 @@ class LoadRandomImage:
             },
         }
 
-    RETURN_TYPES = ("IMAGE", "MASK", "STRING")
-    RETURN_NAMES = ("IMAGE", "MASK", "filename")
+    RETURN_TYPES = ("IMAGE", "MASK", "STRING", "STRING")
+    RETURN_NAMES = ("IMAGE", "MASK", "filename", "directory")
     FUNCTION = "load_image"
     CATEGORY = "image"
 
@@ -86,7 +86,7 @@ class LoadRandomImage:
         # `last_loaded` is what this run actually sent downstream, for preview.
         return {
             "ui": {"filename": [next_filename], "last_loaded": [chosen]},
-            "result": (image_out, mask_out, chosen),
+            "result": (image_out, mask_out, chosen, directory),
         }
 
     @classmethod

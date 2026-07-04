@@ -77,6 +77,12 @@ app.registerExtension({
 
             node.addDOMWidget("random_image_preview", "preview", img, { serialize: false });
 
+            const fileCountEl = document.createElement("div");
+            fileCountEl.style.fontSize = "11px";
+            fileCountEl.style.opacity = "0.7";
+            fileCountEl.style.textAlign = "center";
+            node.addDOMWidget("random_image_file_count", "file_count", fileCountEl, { serialize: false });
+
             node.updateRandomImagePreview = function (filename) {
                 if (!filename || !dirWidget.value) return;
                 img.src =
@@ -92,6 +98,7 @@ app.registerExtension({
                 const requestId = ++fileListRequestId;
                 if (!dirWidget.value) {
                     filenameWidget.options.values = [];
+                    fileCountEl.textContent = "";
                     return;
                 }
                 try {
@@ -101,16 +108,20 @@ app.registerExtension({
                     if (data.error) {
                         console.error("random_image list error:", data.error);
                         filenameWidget.options.values = [];
+                        fileCountEl.textContent = "";
                         return;
                     }
                     filenameWidget.options.values = data.files || [];
                     if (!filenameWidget.options.values.includes(filenameWidget.value)) {
                         filenameWidget.value = filenameWidget.options.values[0] || "";
                     }
+                    const count = filenameWidget.options.values.length;
+                    fileCountEl.textContent = count + (count === 1 ? " file found" : " files found");
                     app.graph.setDirtyCanvas(true, true);
                 } catch (e) {
                     if (requestId === fileListRequestId) {
                         console.error("random_image list failed:", e);
+                        fileCountEl.textContent = "";
                     }
                 }
             }
@@ -119,7 +130,15 @@ app.registerExtension({
                 const auto = randomWidget.value || sequentialWidget.value;
                 diceWidget.disabled = auto;
                 filenameWidget.disabled = auto;
+                // whatever is currently shown is ignored the moment
+                // randomize_on_queue is on - a fresh pick happens at execute
+                // time regardless, so showing anything here would be
+                // misleading. sequential mode is different: the currently
+                // shown file IS exactly what the next run will output, so it
+                // stays visible.
+                img.style.display = randomWidget.value ? "none" : "";
             }
+            node.updateWidgetVisibility = updateWidgetVisibility;
 
             function makeMutuallyExclusive(source, other) {
                 const origCallback = source.callback;
@@ -260,6 +279,10 @@ app.registerExtension({
                 if (lastLoadedWidget) lastLoadedWidget.value = lastLoaded;
                 if (this.updateRandomImagePreview) this.updateRandomImagePreview(lastLoaded);
             }
+            // re-applies AFTER the src update above, so the preview stays
+            // hidden if randomize_on_queue is (still) on even though a real
+            // result just came in
+            if (this.updateWidgetVisibility) this.updateWidgetVisibility();
         };
 
         // a loaded/hand-edited workflow.json applies widgets_values directly
@@ -273,6 +296,7 @@ app.registerExtension({
             if (randomW && sequentialW && randomW.value && sequentialW.value) {
                 sequentialW.value = false;
             }
+            if (this.updateWidgetVisibility) this.updateWidgetVisibility();
             return result;
         };
     },

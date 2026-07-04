@@ -28,18 +28,20 @@ Restart ComfyUI after installing/updating.
 
 ## Usage
 
-- **`directory`** — absolute path to a folder of images (recursive, `.png/.jpg/.jpeg/.webp/.bmp/.gif`)
+- **`directory`** — absolute path to a folder of images (recursive, `.png/.jpg/.jpeg/.webp/.bmp/.gif`). A small counter under the preview shows how many matching files were found, refreshed whenever the directory changes.
 - **Filename dropdown** — manually pick a specific file from the list
 - **🎲 Randomize** — button that instantly picks a random file and updates the preview (no graph execution needed)
 - **Drag & drop** an image straight onto the node — uploads it through ComfyUI's own `/upload/image`, switches `directory` to the managed input dir, and selects the uploaded file (mirrors core LoadImage's behavior)
-- **`randomize_on_queue`** — random pick on **every** Queue Prompt (server-side, not just via the button)
-- **`sequential_on_queue`** — next file in alphabetical order on every Queue Prompt, wrapping back to the start after the last file
+- **`randomize_on_queue`** — random pick on **every** Queue Prompt (server-side, not just via the button). Whatever is currently shown/selected is ignored when this runs, so the preview hides itself while this is checked — there is nothing meaningful to show until an actual run happens.
+- **`sequential_on_queue`** — next file in alphabetical order on every Queue Prompt, wrapping back to the start after the last file. Unlike randomize mode, the currently shown file IS exactly what the next run will output, so the preview stays visible here.
 
 The two checkboxes are mutually exclusive in the UI, and the server also rejects the queue if both end up enabled at once (guards against a hand-edited workflow.json).
 
 **Sequential semantics:** a given run outputs the file **currently** selected (the one already shown in the preview), and the advance to the next one happens **after** — preparing the starting point for the next run. The advance is tracked in server memory per node `unique_id` + `directory`, which also protects against a batch-queue race (several runs queued before the first one finishes don't end up loading the same file repeatedly).
 
-The node's preview shows what **actually** got loaded on the last run (survives saving/reopening the workflow), not what's queued up next.
+The node's preview shows what **actually** got loaded on the last run (survives saving/reopening the workflow), not what's queued up next — except while `randomize_on_queue` is checked, where it's hidden regardless, since that value is about to be discarded anyway.
+
+**Outputs:** `IMAGE`, `MASK`, `filename` (the file that was actually loaded this run), `directory` (the resolved absolute directory path this run used).
 
 ## ⚠️ Security
 
